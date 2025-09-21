@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "3fs-csi.name" . }}
+  labels:
+    app.kubernetes.io/name: 3fs-csi
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: 3fs-csi
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: 3fs-csi
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "3fs-csi.serviceAccountName" . }}
+      hostNetwork: false
+      hostPID: true
+      tolerations: {{- toYaml .Values.tolerations | nindent 8 }}
+      nodeSelector: {{- toYaml .Values.nodeSelector | nindent 8 }}
+      affinity: {{- toYaml .Values.affinity | nindent 8 }}
+      containers:
+        - name: node-driver-registrar
+          image: {{ .Values.registrar.image }}
+          args:
+            - --v=2
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/{{ .Values.driverName }}/csi.sock
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: 3fs-csi-node
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+          env:
+            - name: CSI_DRIVER_NAME
+              value: {{ .Values.driverName | quote }}
+            - name: CLUSTER_ID
+              value: {{ .Values.clusterId | quote }}
+            - name: GLOBAL_MOUNT_BASE
+              value: {{ .Values.globalMountBase | quote }}
+            - name: CONFIG_DIR
+              value: {{ .Values.configDir | quote }}
+            - name: TOKEN_FILE
+              value: {{ .Values.tokenFile | quote }}
+            - name: HF3FS_BINARY_PATH
+              value: {{ .Values.hf3fsBinaryPath | quote }}
+            - name: MGMTD_ADDRESSES
+              value: {{ toJson .Values.mgmtdAddresses | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/{{ .Values.driverName }}
+            - name: registration-dir
+              mountPath: /var/lib/kubelet/plugins_registry
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: Bidirectional
+            - name: dev-fuse
+              mountPath: /dev/fuse
+            - name: host-3fs
+              mountPath: /var/lib/3fs
+            - name: token
+              mountPath: /var/lib/3fs/token.txt
+              subPath: {{ .Values.tokenSecretKey }}
+              readOnly: true
+            {{- if and (not .Values.bundleHF3FS) .Values.hf3fsHostPath }}
+            - name: hf3fs-bin
+              mountPath: /opt/3fs/bin/hf3fs_fuse_main
+              subPath: hf3fs_fuse_main
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: dev-fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
+        - name: host-3fs
+          hostPath:
+            path: /var/lib/3fs
+            type: DirectoryOrCreate
+        - name: token
+          secret:
+            secretName: {{ .Values.tokenSecretName }}
+            items:
+              - key: {{ .Values.tokenSecretKey }}
+                path: {{ .Values.tokenSecretKey }}
+        {{- if and (not .Values.bundleHF3FS) .Values.hf3fsHostPath }}
+        - name: hf3fs-bin
+          hostPath:
+            path: {{ .Values.hf3fsHostPath }}
+            type: File
+        {{- end }}
+

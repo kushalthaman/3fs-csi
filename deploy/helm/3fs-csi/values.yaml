@@ -1,0 +1,36 @@
+image:
+  repository: 3fs-csi/node
+  tag: dev
+  pullPolicy: IfNotPresent
+
+driverName: fs.3fs.dev
+clusterId: stage
+globalMountBase: /var/lib/3fs/mnt
+configDir: /var/lib/3fs/etc
+tokenFile: /var/lib/3fs/token.txt
+hf3fsBinaryPath: /opt/3fs/bin/hf3fs_fuse_main
+logLevel: info
+mgmtdAddresses: ["RDMA://192.168.1.1:8000"]
+
+tokenSecretName: 3fs-token
+tokenSecretKey: token
+
+registrar:
+  image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.10.0
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""
+
+resources: {}
+
+nodeSelector: {}
+affinity: {}
+tolerations: []
+
+bundleHF3FS: false
+hf3fsHostPath: "" # if not bundling, you can hostPath mount from node
+
